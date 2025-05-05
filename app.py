@@ -4,6 +4,10 @@ import requests, tempfile, os
 
 app = Flask(__name__)
 
+@app.route('/')
+def home():
+    return send_file('index.html')
+
 @app.route('/download/video')
 def download_video():
     url = request.args.get('url')
