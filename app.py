@@ -14,43 +14,33 @@ def download_video():
     quality = request.args.get('quality', 'highest')
     if not url:
         abort(400, 'url 파라미터가 필요합니다')
-        
-# HEAD 요청 분기: 스트림 탐색 없이 헤더만 반환
-    if request.method == 'HEAD':
-        from urllib.parse import urlparse, parse_qs
-        qs       = parse_qs(urlparse(url).query)
-        video_id = qs.get('v', ['video'])[0]
-        filename = f"{video_id}.mp4"
-        return ('', 200, {
-                'Content-Disposition': f'attachment; filename=\"{filename}\"'
-         })
-         
+
     # 공통: 스트림 탐색
     try:
         yt = YouTube(url)
-        streams = yt.streams.filter(progressive=True, file_extension='mp4')
-        if quality != 'highest':
-            stream = streams.filter(res=quality).first()                      or streams.order_by('resolution').desc().first()
-        else:
-            stream = streams.order_by('resolution').desc().first()
-        if not stream:
-            abort(404, '요청한 품질의 스트림을 찾을 수 없습니다')
     except Exception:
-        abort(400, '스트림 정보를 가져오지 못했습니다')
+        abort(400, '잘못된 유튜브 URL입니다')
+    streams = yt.streams.filter(progressive=True, file_extension='mp4')
+    if quality != 'highest':
+        stream = streams.filter(res=quality).first()                  or streams.order_by('resolution').desc().first()
+    else:
+        stream = streams.order_by('resolution').desc().first()
+    if not stream:
+        abort(404, '요청한 품질의 스트림을 찾을 수 없습니다')
 
-    filename = yt.title.replace('/', '_').replace('\\', '_') + '.mp4'
+    filename = yt.title.replace('/', '_').replace('\\','_') + '.mp4'
     filesize = getattr(stream, 'filesize', None)
 
-    # HEAD 요청 처리
+    # HEAD 요청 분기: 파일 크기를 포함한 헤더만 반환
     if request.method == 'HEAD':
         headers = {
             'Content-Disposition': f'attachment; filename="{filename}"'
         }
-        if filesize:
+        if filesize is not None:
             headers['Content-Length'] = str(filesize)
         return ('', 200, headers)
 
-    # GET 요청 처리
+    # GET 요청 분기: 실제 다운로드
     with tempfile.TemporaryDirectory() as tmp_dir:
         video_path = stream.download(output_path=tmp_dir, filename='video.mp4')
         response = make_response(send_file(video_path, as_attachment=True))
@@ -64,20 +54,23 @@ def download_thumbnail():
         abort(400, 'url 파라미터가 필요합니다')
     try:
         yt = YouTube(url)
-        thumb_url = yt.thumbnail_url
     except Exception:
         abort(400, '잘못된 유튜브 URL입니다')
 
-    filename = yt.title.replace('/', '_').replace('\\', '_') + '.jpg'
-    # HEAD 요청 처리
+    thumb_url = yt.thumbnail_url
+    filename = yt.title.replace('/', '_').replace('\\','_') + '.jpg'
+    # HEAD 요청 분기
     if request.method == 'HEAD':
+        # 요청 헤더로 파일 크기 가져오기
+        head_resp = requests.head(thumb_url)
         headers = {
             'Content-Disposition': f'attachment; filename="{filename}"',
-            'Content-Length': str(requests.head(thumb_url).headers.get('Content-Length', ''))
         }
+        if 'Content-Length' in head_resp.headers:
+            headers['Content-Length'] = head_resp.headers['Content-Length']
         return ('', 200, headers)
 
-    # GET 요청 처리
+    # GET 요청 분기
     tmpf = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
     try:
         resp = requests.get(thumb_url, timeout=10)
