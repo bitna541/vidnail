@@ -14,7 +14,17 @@ def download_video():
     quality = request.args.get('quality', 'highest')
     if not url:
         abort(400, 'url 파라미터가 필요합니다')
-
+        
+# HEAD 요청 분기: 스트림 탐색 없이 헤더만 반환
+     if request.method == 'HEAD':
+         from urllib.parse import urlparse, parse_qs
+         qs       = parse_qs(urlparse(url).query)
+         video_id = qs.get('v', ['video'])[0]
+         filename = f"{video_id}.mp4"
+         return ('', 200, {
+                 'Content-Disposition': f'attachment; filename=\"{filename}\"'
+         })
+         
     # 공통: 스트림 탐색
     try:
         yt = YouTube(url)
