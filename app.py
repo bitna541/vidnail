@@ -15,6 +15,36 @@ def download_video():
     if not url:
         abort(400, 'url 파라미터가 필요합니다')
 
+     @app.route('/download/video', methods=['GET','HEAD'])
+ def download_video():
+     url = request.args.get('url')
+     quality = request.args.get('quality', 'highest')
+     if not url:
+         abort(400, 'url 파라미터가 필요합니다')
+
+    # —————— HEAD 요청 처리 ——————
+    # 스트림 객체만 준비해서, 본문 없이 헤더만 반환
+    if request.method == 'HEAD':
+        try:
+            yt = YouTube(url)
+            streams = yt.streams.filter(progressive=True, file_extension='mp4')
+            stream = (streams.filter(res=quality).first()
+                      if quality!='highest'
+                      else streams.order_by('resolution').desc().first())
+            if not stream:
+                abort(404, '요청한 품질의 스트림을 찾을 수 없습니다')
+            filename = yt.title.replace('/', '_').replace('\\','_') + '.mp4'
+            filesize = stream.filesize
+        except Exception:
+            abort(400, '스트림 정보를 가져오지 못했습니다')
+        headers = {
+            'Content-Disposition': f'attachment; filename="{filename}"'
+        }
+        if filesize:
+            headers['Content-Length'] = str(filesize)
+        return ('', 200, headers)
+    # —————— HEAD 요청 처리 끝 ——————
+
     # 1) 스트림 객체만 찾기
     try:
         yt = YouTube(url)
