@@ -2,7 +2,7 @@ import os
 import re
 import tempfile
 import logging
-from flask import Flask, request, abort, send_file
+from flask import Flask, request, abort, send_file, send_from_directory
 from pytube import YouTube
 import requests
 from urllib.parse import urlparse, parse_qs
@@ -28,21 +28,26 @@ def normalize_video_id(raw_url: str) -> str:
 
 @app.route('/')
 def index():
-    return send_file('index.html')
+    # 작업 디렉토리의 index.html 반환
+    return send_from_directory('.', 'index.html')
 
 @app.route('/download/video', methods=['GET', 'HEAD'])
 def download_video():
     raw_url = request.args.get('url')
     video_id = normalize_video_id(raw_url)
 
-    # HEAD 요청은 Pytube 호출 이전에 처리
+    # HEAD 요청은 먼저 응답
     if request.method == 'HEAD':
-        return '', 200, {'Content-Disposition': f'attachment; filename="{video_id}.mp4"'}
+        return '', 200, {
+            'Content-Disposition': f'attachment; filename="{video_id}.mp4"'
+        }
 
     quality = request.args.get('quality', 'highest')
     std_url = f'https://www.youtube.com/watch?v={video_id}'
     yt = YouTube(std_url)
-    streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
+    streams = yt.streams.filter(
+        progressive=True, file_extension='mp4'
+    ).order_by('resolution').desc()
     if quality != 'highest':
         streams = streams.filter(res=quality)
     stream = streams.first()
@@ -63,7 +68,11 @@ def download_video():
         app.logger.error(f'[download_video] 실패: {e}', exc_info=True)
         abort(500, f'다운로드 실패: {e}')
 
-    response = send_file(out_path, as_attachment=True, download_name=f'{video_id}.mp4')
+    response = send_file(
+        out_path,
+        as_attachment=True,
+        download_name=f'{video_id}.mp4'
+    )
     try:
         os.remove(out_path)
     except:
@@ -76,7 +85,9 @@ def download_thumbnail():
     video_id = normalize_video_id(raw_url)
 
     if request.method == 'HEAD':
-        return '', 200, {'Content-Disposition': f'attachment; filename="{video_id}.jpg"'}
+        return '', 200, {
+            'Content-Disposition': f'attachment; filename="{video_id}.jpg"'
+        }
 
     std_url = f'https://www.youtube.com/watch?v={video_id}'
     yt = YouTube(std_url)
@@ -92,7 +103,11 @@ def download_thumbnail():
         tmp.write(chunk)
     tmp.close()
 
-    response = send_file(tmp.name, as_attachment=True, download_name=filename)
+    response = send_file(
+        tmp.name,
+        as_attachment=True,
+        download_name=filename
+    )
     try:
         os.remove(tmp.name)
     except:
