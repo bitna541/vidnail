@@ -1,8 +1,15 @@
 from flask import Flask, request, send_file, abort, make_response
-import re
 from pytube import YouTube
+from pytube import request as pytube_request
+
+# Force Pytube to use a browser-like User-Agent to avoid HTTP 400/429 errors
+pytube_request.default_headers['User-Agent'] = (
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+    'AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/113.0.0.0 Safari/537.36'
+)
+
 import requests, tempfile, os
-from urllib.parse import unquote, urlparse, parse_qs
 
 app = Flask(__name__)
 
