@@ -14,21 +14,14 @@ logging.basicConfig(
 )
 
 def normalize_video_id(raw_url: str) -> str:
-    """Extract YouTube video ID from various URL formats"""
     if not raw_url:
         abort(400, 'url 파라미터가 필요합니다.')
-    # Parse query parameters
     parsed = urlparse(raw_url)
-    # Handle full watch URL with v parameter
     qs = parse_qs(parsed.query)
-    vid = None
-    if 'v' in qs:
-        vid = qs['v'][0]
-    else:
-        # Handle youtu.be short URL or embed
+    vid = qs.get('v', [None])[0]
+    if not vid:
         m = re.match(r'^/(?:embed/|v/)?([A-Za-z0-9_-]{11})', parsed.path)
-        if m:
-            vid = m.group(1)
+        vid = m.group(1) if m else None
     if not vid or not re.match(r'^[A-Za-z0-9_-]{11}$', vid):
         abort(400, '올바른 YouTube URL이 아닙니다.')
     return vid
@@ -41,21 +34,20 @@ def index():
 def download_video():
     raw_url = request.args.get('url')
     video_id = normalize_video_id(raw_url)
-    std_url = f'https://www.youtube.com/watch?v={video_id}'
-    quality = request.args.get('quality', 'highest')
 
+    # HEAD 요청은 Pytube 호출 이전에 처리
+    if request.method == 'HEAD':
+        return '', 200, {'Content-Disposition': f'attachment; filename="{video_id}.mp4"'}
+
+    quality = request.args.get('quality', 'highest')
+    std_url = f'https://www.youtube.com/watch?v={video_id}'
     yt = YouTube(std_url)
-    streams = yt.streams.filter(
-        progressive=True, file_extension='mp4'
-    ).order_by('resolution').desc()
+    streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
     if quality != 'highest':
         streams = streams.filter(res=quality)
     stream = streams.first()
     if not stream:
         abort(500, '요청하신 포맷의 스트림을 찾을 수 없습니다.')
-
-    if request.method == 'HEAD':
-        return '', 200, {'Content-Disposition': f'attachment; filename="{video_id}.mp4"'}
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     out_path = tmp.name
@@ -82,13 +74,14 @@ def download_video():
 def download_thumbnail():
     raw_url = request.args.get('url')
     video_id = normalize_video_id(raw_url)
+
+    if request.method == 'HEAD':
+        return '', 200, {'Content-Disposition': f'attachment; filename="{video_id}.jpg"'}
+
     std_url = f'https://www.youtube.com/watch?v={video_id}'
     yt = YouTube(std_url)
     thumb_url = yt.thumbnail_url
     filename = f'{video_id}.jpg'
-
-    if request.method == 'HEAD':
-        return '', 200, {'Content-Disposition': f'attachment; filename="{filename}"'}
 
     resp = requests.get(thumb_url, stream=True)
     if resp.status_code != 200:
