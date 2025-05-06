@@ -1,78 +1,80 @@
-import re
-import os
-import tempfile
-import subprocess
-import sys
 from flask import Flask, request, abort, send_file
 from pytube import YouTube
+import re
+import tempfile
+import os
+import sys
 
 app = Flask(__name__)
+
+def normalize_url(raw_url):
+    # 비디오 ID만 추출하여 표준 URL로 재생성
+    m = re.search(r'(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})', raw_url or '')
+    if not m:
+        abort(400, '올바른 YouTube URL이 아닙니다.')
+    video_id = m.group(1)
+    return f'https://www.youtube.com/watch?v={video_id}', video_id
 
 @app.route('/download/video', methods=['GET', 'HEAD'])
 def download_video():
     raw_url = request.args.get('url')
     if not raw_url:
         abort(400, 'url 파라미터가 필요합니다')
-    m = re.search(r'(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})', raw_url)
-    if not m:
-        abort(400, '올바른 YouTube URL이 아닙니다.')
-    video_id = m.group(1)
-    url = f'https://www.youtube.com/watch?v={video_id}'
+
+    url, video_id = normalize_url(raw_url)
     quality = request.args.get('quality', 'highest')
-    out_file = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-    out_file_path = out_file.name
-    out_file.close()
 
-    # 포맷 설정
+    yt = YouTube(url)
+    # 스트림 선택
     if quality == 'highest':
-        fmt = 'best'
+        stream = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
     else:
-        # 예: '720p' -> height<=720
-        height = quality.replace('p', '')
-        fmt = f'bestvideo[height<={height}]+bestaudio/best'
+        # e.g. '720p' -> 720
+        height = int(quality.replace('p', ''))
+        stream = yt.streams.filter(progressive=True, file_extension='mp4', resolution=f'{height}p').first()
+    if not stream:
+        abort(400, '해당 품질의 스트림을 찾을 수 없습니다.')
 
-    cmd = ['yt-dlp', '-f', fmt, '-o', out_file_path, url]
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    tmp.close()
+    try:
+        stream.download(output_path=os.path.dirname(tmp.name), filename=os.path.basename(tmp.name))
+    except Exception as e:
+        abort(500, f'다운로드 실패: {e}')
 
     if request.method == 'HEAD':
-        return ('', 200, {'Content-Disposition': f'attachment; filename="{video_id}.mp4"'})
+        headers = {'Content-Disposition': f'attachment; filename="{video_id}.mp4"'}
+        return ('', 200, headers)
 
-    try:
-        app.logger.info(f"[download_video] Running command: {' '.join(cmd)}")
-        subprocess.run(cmd, check=True)
-        app.logger.info(f"[download_video] Sending file {out_file_path}")
-        return send_file(out_file_path, as_attachment=True, download_name=f"{video_id}.mp4")
-    except subprocess.CalledProcessError as e:
-        abort(500, f'다운로드 실패: {{e}}')
-    finally:
-        # 임시 파일은 send_file 이후에 삭제될 수 있도록 두거나, 배포 환경에서 정리
-        pass
+    print(f"[download_video] Sending file {tmp.name}")
+    sys.stdout.flush()
+    return send_file(tmp.name, as_attachment=True, download_name=f"{video_id}.mp4")
 
 @app.route('/download/thumbnail', methods=['GET', 'HEAD'])
 def download_thumbnail():
     raw_url = request.args.get('url')
     if not raw_url:
         abort(400, 'url 파라미터가 필요합니다')
-    m = re.search(r'(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})', raw_url)
-    if not m:
-        abort(400, '올바른 YouTube URL이 아닙니다.')
-    video_id = m.group(1)
-    yt = YouTube(f'https://www.youtube.com/watch?v={video_id}')
+
+    url, video_id = normalize_url(raw_url)
+    yt = YouTube(url)
     thumb_url = yt.thumbnail_url
     filename = f'{video_id}.jpg'
 
     if request.method == 'HEAD':
-        return ('', 200, {'Content-Disposition': f'attachment; filename="{filename}"'})
+        headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
+        return ('', 200, headers)
 
     resp = __import__('requests').get(thumb_url, stream=True)
     if resp.status_code != 200:
         abort(500, '썸네일 요청 실패')
-
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
     for chunk in resp.iter_content(1024):
         tmp.write(chunk)
     tmp.close()
 
-    app.logger.info(f"[download_thumbnail] Sending file {tmp.name}")
+    print(f"[download_thumbnail] Sending file {tmp.name}")
+    sys.stdout.flush()
     response = send_file(tmp.name, as_attachment=True, download_name=filename)
     try:
         os.remove(tmp.name)
