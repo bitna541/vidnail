@@ -109,7 +109,7 @@
           const a = document.createElement('a'); a.href = urlBlob; a.download = filename;
           document.body.appendChild(a); a.click(); document.body.removeChild(a);
 
-          fetch(`/download/thumbnail?url=${encodeURIComponent(url)}`)
+          fetch(`/download/video?url=${encodeURIComponent(url)}&quality=${quality}`)
             .then(res => Promise.all([res.blob(), res.headers.get('X-Filename')]))
             .then(([imgBlob, imgName]) => {
               const imgUrl = URL.createObjectURL(imgBlob);
