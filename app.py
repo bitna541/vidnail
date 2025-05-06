@@ -1,24 +1,10 @@
-# app.py
-
 import os
 import re
-import sys
 import tempfile
-import logging
 from flask import Flask, request, abort, send_file
 from pytube import YouTube
+import logging
 import requests
-
-# ── Pytube User-Agent 덮어쓰기 ────────────────────────────────
-# (이번 버전에서는 기본 요청 헤더만 덮어씁니다)
-from pytube import request as pytube_request
-pytube_request.default_headers = {
-    'User-Agent': (
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
-        'AppleWebKit/537.36 (KHTML, like Gecko) '
-        'Chrome/112.0.0.0 Safari/537.36'
-    )
-}
 
 app = Flask(__name__)
 logging.basicConfig(
@@ -26,14 +12,11 @@ logging.basicConfig(
     level=logging.INFO
 )
 
-
 def normalize_video_id(raw_url: str) -> str:
-    """URL에서 11자리 비디오 ID만 뽑아서 반환"""
     m = re.search(r'(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})', raw_url or '')
     if not m:
         abort(400, '올바른 YouTube URL이 아닙니다.')
     return m.group(1)
-
 
 @app.route('/download/video', methods=['GET', 'HEAD'])
 def download_video():
@@ -45,24 +28,22 @@ def download_video():
     std_url = f'https://www.youtube.com/watch?v={video_id}'
     quality = request.args.get('quality', 'highest')
 
-    # cookies 인자 제거
     yt = YouTube(std_url)
-
-    # progressive mp4 스트림을 해상도 내림차순 정렬
-    streams = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc()
+    streams = yt.streams.filter(progressive=True, file_extension='mp4') \
+                        .order_by('resolution').desc()
     if quality != 'highest':
-        # 예: "720p" -> 해상도 필터
         streams = streams.filter(res=quality)
     stream = streams.first()
     if not stream:
         abort(500, '요청하신 포맷의 스트림을 찾을 수 없습니다.')
 
+    # 임시 파일 생성
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
     out_path = tmp.name
     tmp.close()
 
     try:
-        app.logger.info(f'[download_video] 다운로드 시작: {std_url} -> {out_path}')
+        app.logger.info(f'[download_video] 다운로드 시작: {std_url}')
         yt.streams.get_by_itag(stream.itag).download(
             output_path=os.path.dirname(out_path),
             filename=os.path.basename(out_path)
@@ -72,17 +53,14 @@ def download_video():
         abort(500, f'다운로드 실패: {e}')
 
     if request.method == 'HEAD':
-        headers = {'Content-Disposition': f'attachment; filename="{video_id}.mp4"'}
-        return ('', 200, headers)
+        return ('', 200, {'Content-Disposition': f'attachment; filename="{video_id}.mp4"'})
 
-    app.logger.info(f'[download_video] 전송: {out_path}')
     response = send_file(out_path, as_attachment=True, download_name=f'{video_id}.mp4')
     try:
         os.remove(out_path)
-    except OSError:
+    except:
         pass
     return response
-
 
 @app.route('/download/thumbnail', methods=['GET', 'HEAD'])
 def download_thumbnail():
@@ -92,13 +70,12 @@ def download_thumbnail():
 
     video_id = normalize_video_id(raw_url)
     std_url = f'https://www.youtube.com/watch?v={video_id}'
-    yt = YouTube(std_url)  # cookies 인자 제거
+    yt = YouTube(std_url)
     thumb_url = yt.thumbnail_url
     filename = f'{video_id}.jpg'
 
     if request.method == 'HEAD':
-        headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
-        return ('', 200, headers)
+        return ('', 200, {'Content-Disposition': f'attachment; filename="{filename}"'})
 
     resp = requests.get(thumb_url, stream=True)
     if resp.status_code != 200:
@@ -112,10 +89,9 @@ def download_thumbnail():
     response = send_file(tmp.name, as_attachment=True, download_name=filename)
     try:
         os.remove(tmp.name)
-    except OSError:
+    except:
         pass
     return response
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
