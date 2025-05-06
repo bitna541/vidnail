@@ -2,22 +2,14 @@ import os
 import re
 import tempfile
 import logging
-from flask import Flask, request, abort, send_file, send_from_directory
-from yt_dlp import YoutubeDL
-from pytube import YouTube
+import json
 import requests
+from flask import Flask, request, abort, send_file, send_from_directory
 from urllib.parse import urlparse, parse_qs
+from playwright.sync_api import sync_playwright
 
 app = Flask(__name__)
 logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', level=logging.INFO)
-
-# yt-dlp options for public videos
-YDL_OPTS = {
-    'format': 'bestvideo[ext=mp4]+bestaudio/best',
-    'outtmpl': os.path.join(tempfile.gettempdir(), '%(id)s.%(ext)s'),
-    'quiet': True,
-    'no_warnings': True,
-}
 
 def normalize_video_id(raw_url: str) -> str:
     if not raw_url:
@@ -39,54 +31,66 @@ def index():
 @app.route('/download/video', methods=['GET','HEAD'])
 def download_video():
     raw = request.args.get('url')
-    vid = normalize_video_id(raw)
-    std_url = f'https://www.youtube.com/watch?v={vid}'
-    out_path = os.path.join(tempfile.gettempdir(), f'{vid}.mp4')
-
+    video_id = normalize_video_id(raw)
+    std_url = f'https://www.youtube.com/watch?v={video_id}'
     if request.method == 'HEAD':
-        return '', 200, {'Content-Disposition': f'attachment; filename="{vid}.mp4"'}
-
-    app.logger.info(f'[video] Downloading {std_url}')
-    with YoutubeDL(YDL_OPTS) as ydl:
-        try:
-            ydl.extract_info(std_url, download=True)
-        except Exception as e:
-            app.logger.error(f'[video] yt-dlp failed: {e}', exc_info=True)
-            abort(500, f'다운로드 실패: {e}')
-
-    if not os.path.exists(out_path):
-        abort(500, '다운로드 후 파일을 찾을 수 없습니다.')
-
-    resp = send_file(out_path, as_attachment=True, download_name=f'{vid}.mp4')
-    try: os.remove(out_path)
-    except: pass
+        return '', 200, {'Content-Disposition': f'attachment; filename="{video_id}.mp4"'}
+    # Launch headless Playwright to get streamingData
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(std_url, wait_until='networkidle')
+        # Evaluate JS to extract ytInitialPlayerResponse
+        player_response = page.evaluate("window.ytInitialPlayerResponse")
+        browser.close()
+    if not player_response or 'streamingData' not in player_response:
+        abort(500, '스트리밍 데이터 추출 실패')
+    streams = player_response['streamingData'].get('formats', []) + player_response['streamingData'].get('adaptiveFormats', [])
+    # Filter progressive mp4
+    prog = [s for s in streams if s.get('mimeType','').startswith('video/mp4') and 'videoOnly' not in s]
+    if not prog:
+        abort(500, '진행형(mp4) 스트림을 찾을 수 없습니다.')
+    # pick highest resolution
+    best = sorted(prog, key=lambda s: s.get('height',0))[-1]
+    url = best.get('url')
+    if not url:
+        abort(500, '스트림 URL 없음')
+    # download via requests
+    response = requests.get(url, stream=True)
+    if response.status_code != 200:
+        abort(500, '비디오 다운로드 실패')
+    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
+    for chunk in response.iter_content(chunk_size=8192):
+        tmp.write(chunk)
+    tmp.close()
+    resp = send_file(tmp.name, as_attachment=True, download_name=f'{video_id}.mp4')
+    os.remove(tmp.name)
     return resp
 
 @app.route('/download/thumbnail', methods=['GET','HEAD'])
 def download_thumbnail():
     raw = request.args.get('url')
-    vid = normalize_video_id(raw)
-    std_url = f'https://www.youtube.com/watch?v={vid}'
-    filename = f'{vid}.jpg'
-
+    video_id = normalize_video_id(raw)
     if request.method == 'HEAD':
-        return '',200,{'Content-Disposition':f'attachment; filename="{filename}"'}
-
-    # pytube for thumbnail
-    yt = YouTube(std_url)
-    thumb_url = yt.thumbnail_url
+        return '', 200, {'Content-Disposition': f'attachment; filename="{video_id}.jpg"'}
+    std_url = f'https://www.youtube.com/watch?v={video_id}'
+    # extract thumbnail via requests and regex
+    resp = requests.get(std_url)
+    m = re.search(r'"thumbnailUrl":"([^"]+)"', resp.text)
+    if not m:
+        abort(500, '썸네일 URL 추출 실패')
+    thumb_url = m.group(1).replace('\u0026', '&')
     r = requests.get(thumb_url, stream=True)
-    if r.status_code!=200:
-        abort(500,'썸네일 요청 실패')
-
+    if r.status_code != 200:
+        abort(500, '썸네일 다운로드 실패')
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
-    for c in r.iter_content(1024): tmp.write(c)
+    for c in r.iter_content(1024):
+        tmp.write(c)
     tmp.close()
-
-    resp = send_file(tmp.name, as_attachment=True, download_name=filename)
-    try: os.remove(tmp.name)
-    except: pass
-    return resp
+    out = send_file(tmp.name, as_attachment=True, download_name=f'{video_id}.jpg')
+    os.remove(tmp.name)
+    return out
 
 if __name__=='__main__':
+    # Ensure Playwright browsers are installed: playwright install
     app.run(host='0.0.0.0', port=5000, debug=True)
