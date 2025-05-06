@@ -38,6 +38,8 @@ def download_video():
 
     try:
         subprocess.run(cmd, check=True)
+        print(f"[download_video] Sending file {out_path}")
+        sys.stdout.flush()
         return send_file(out_path, as_attachment=True, download_name=f'{video_id}.mp4')
     except subprocess.CalledProcessError as e:
         abort(500, f'다운로드 실패: {e.stderr}')
@@ -74,6 +76,8 @@ def download_thumbnail():
     for chunk in resp.iter_content(1024):
         tmp.write(chunk)
     tmp.close()
+    print(f"[download_thumbnail] Sending file {tmp.name}")
+    import sys; sys.stdout.flush()
     response = send_file(tmp.name, as_attachment=True, download_name=filename)
     try:
         os.remove(tmp.name)
