@@ -5,8 +5,8 @@ import requests, tempfile, os
 from urllib.parse import urlparse, parse_qs
 
 # Apply browser-like User-Agent to pytube request headers
-# The attribute is _DEFAULT_HEADERS in this version
-pytube_request._DEFAULT_HEADERS['User-Agent'] = (
+# Use HEADERS attribute from pytube.request module
+pytube_request.HEADERS['User-Agent'] = (
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
     'AppleWebKit/537.36 (KHTML, like Gecko) '
     'Chrome/113.0.0.0 Safari/537.36'
@@ -18,36 +18,23 @@ app = Flask(__name__)
 def home():
     return send_file('index.html')
 
-@app.route('/download/video', methods=['GET', 'HEAD'])
+@app.route('/download/video', methods=['GET','HEAD'])
 def download_video():
-    # 1) 원본 URL을 가져와서
-    raw_url = request.args.get('url')
-    if not raw_url:
-        abort(400, 'url 파라미터가 필요합니다')
-    # 2) URL 디코딩
-    raw_url = unquote(raw_url)
-    # 3) URL 정규화: 비디오 ID만 추출하여 표준 URL로 재생성
-    m = re.search(r'(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})', raw_url or '')
-    if not m:
-        abort(400, '올바른 YouTube URL이 아닙니다.')
-    video_id = m.group(1)
-    url = f'https://www.youtube.com/watch?v={video_id}'
-
-    # HEAD 요청 분기: 스트림 탐색 없이 헤더만 반환
+    # HEAD 분기: 스트림 탐색 없이 헤더만 반환
     if request.method == 'HEAD':
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(request.args.get('url', '')).query)
+        video_id = qs.get('v', ['video'])[0]
         filename = f"{video_id}.mp4"
-        yt = YouTube(url)
-        stream = yt.streams.filter(progressive=True, file_extension='mp4').order_by('resolution').desc().first()
-        filesize = getattr(stream, 'filesize', None)
-        headers = {
+        return ('', 200, {
             'Content-Disposition': f'attachment; filename="{filename}"'
-        }
-        if filesize is not None:
-            headers['Content-Length'] = str(filesize)
-        return ('', 200, headers)
+        })
 
-    # GET 요청: 실제 다운로드
+    url = request.args.get('url')
     quality = request.args.get('quality', 'highest')
+    if not url:
+        abort(400, 'url 파라미터가 필요합니다')
+
     try:
         yt = YouTube(url)
         streams = yt.streams.filter(progressive=True, file_extension='mp4')
@@ -67,15 +54,13 @@ def download_video():
     except Exception as e:
         abort(500, f"다운로드 실패: {e}")
 
-@app.route('/download/thumbnail', methods=['GET'])
+@app.route('/download/thumbnail')
 def download_thumbnail():
-    raw_url = request.args.get('url')
-    if not raw_url:
+    url = request.args.get('url')
+    if not url:
         abort(400, 'url 파라미터가 필요합니다')
-    # 디코딩
-    raw_url = unquote(raw_url)
     try:
-        yt = YouTube(raw_url)
+        yt = YouTube(url)
         thumb_url = yt.thumbnail_url
         resp = requests.get(thumb_url, timeout=10)
         if resp.status_code != 200:
@@ -83,7 +68,7 @@ def download_thumbnail():
         with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmpf:
             tmpf.write(resp.content)
             tmpf.flush()
-            filename = f"{video_id}.jpg"
+            filename = f"{yt.title.replace('/', '_').replace('\\', '_')}.jpg"
             response = make_response(send_file(tmpf.name, as_attachment=True))
             response.headers['X-Filename'] = filename
         os.unlink(tmpf.name)
