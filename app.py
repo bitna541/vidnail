@@ -1,6 +1,7 @@
 from flask import Flask, request, send_file, abort, make_response
 from pytube import YouTube
 import requests, tempfile, os
+import re  # for YouTube URL normalization
 from urllib.parse import urlparse, parse_qs
 
 app = Flask(__name__)
@@ -13,6 +14,12 @@ def home():
 def download_video():
     # 1) 원본 URL을 가져와서
     raw_url = request.args.get('url')
+    raw_# ─ URL 정규화: 비디오 ID만 추출하여 표준 URL로 재생성
+    raw_m = re.search(r'(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})', url or '')
+    raw_if not m:
+    raw_    abort(400, '올바른 YouTube URL이 아닙니다.')
+    raw_video_id = m.group(1)
+    raw_url = f'https://www.youtube.com/watch?v={video_id}'
     quality = request.args.get('quality', 'highest')
     if not raw_url:
         abort(400, 'url 파라미터가 필요합니다')
