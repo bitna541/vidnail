@@ -3,15 +3,21 @@ import re
 import tempfile
 import logging
 from flask import Flask, request, abort, send_file, send_from_directory
+from yt_dlp import YoutubeDL
 from pytube import YouTube
 import requests
 from urllib.parse import urlparse, parse_qs
 
 app = Flask(__name__)
-logging.basicConfig(
-    format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
-    level=logging.INFO
-)
+logging.basicConfig(format='[%(asctime)s] %(levelname)s: %(message)s', level=logging.INFO)
+
+# yt-dlp options for public videos
+YDL_OPTS = {
+    'format': 'bestvideo[ext=mp4]+bestaudio/best',
+    'outtmpl': os.path.join(tempfile.gettempdir(), '%(id)s.%(ext)s'),
+    'quiet': True,
+    'no_warnings': True,
+}
 
 def normalize_video_id(raw_url: str) -> str:
     if not raw_url:
@@ -28,91 +34,59 @@ def normalize_video_id(raw_url: str) -> str:
 
 @app.route('/')
 def index():
-    # 작업 디렉토리의 index.html 반환
     return send_from_directory('.', 'index.html')
 
-@app.route('/download/video', methods=['GET', 'HEAD'])
+@app.route('/download/video', methods=['GET','HEAD'])
 def download_video():
-    raw_url = request.args.get('url')
-    video_id = normalize_video_id(raw_url)
+    raw = request.args.get('url')
+    vid = normalize_video_id(raw)
+    std_url = f'https://www.youtube.com/watch?v={vid}'
+    out_path = os.path.join(tempfile.gettempdir(), f'{vid}.mp4')
 
-    # HEAD 요청은 먼저 응답
     if request.method == 'HEAD':
-        return '', 200, {
-            'Content-Disposition': f'attachment; filename="{video_id}.mp4"'
-        }
+        return '', 200, {'Content-Disposition': f'attachment; filename="{vid}.mp4"'}
 
-    quality = request.args.get('quality', 'highest')
-    std_url = f'https://www.youtube.com/watch?v={video_id}'
-    yt = YouTube(std_url)
-    streams = yt.streams.filter(
-        progressive=True, file_extension='mp4'
-    ).order_by('resolution').desc()
-    if quality != 'highest':
-        streams = streams.filter(res=quality)
-    stream = streams.first()
-    if not stream:
-        abort(500, '요청하신 포맷의 스트림을 찾을 수 없습니다.')
+    app.logger.info(f'[video] Downloading {std_url}')
+    with YoutubeDL(YDL_OPTS) as ydl:
+        try:
+            ydl.extract_info(std_url, download=True)
+        except Exception as e:
+            app.logger.error(f'[video] yt-dlp failed: {e}', exc_info=True)
+            abort(500, f'다운로드 실패: {e}')
 
-    tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.mp4')
-    out_path = tmp.name
-    tmp.close()
+    if not os.path.exists(out_path):
+        abort(500, '다운로드 후 파일을 찾을 수 없습니다.')
 
-    try:
-        app.logger.info(f'[download_video] 다운로드 시작: {std_url}')
-        yt.streams.get_by_itag(stream.itag).download(
-            output_path=os.path.dirname(out_path),
-            filename=os.path.basename(out_path)
-        )
-    except Exception as e:
-        app.logger.error(f'[download_video] 실패: {e}', exc_info=True)
-        abort(500, f'다운로드 실패: {e}')
+    resp = send_file(out_path, as_attachment=True, download_name=f'{vid}.mp4')
+    try: os.remove(out_path)
+    except: pass
+    return resp
 
-    response = send_file(
-        out_path,
-        as_attachment=True,
-        download_name=f'{video_id}.mp4'
-    )
-    try:
-        os.remove(out_path)
-    except:
-        pass
-    return response
-
-@app.route('/download/thumbnail', methods=['GET', 'HEAD'])
+@app.route('/download/thumbnail', methods=['GET','HEAD'])
 def download_thumbnail():
-    raw_url = request.args.get('url')
-    video_id = normalize_video_id(raw_url)
+    raw = request.args.get('url')
+    vid = normalize_video_id(raw)
+    std_url = f'https://www.youtube.com/watch?v={vid}'
+    filename = f'{vid}.jpg'
 
     if request.method == 'HEAD':
-        return '', 200, {
-            'Content-Disposition': f'attachment; filename="{video_id}.jpg"'
-        }
+        return '',200,{'Content-Disposition':f'attachment; filename="{filename}"'}
 
-    std_url = f'https://www.youtube.com/watch?v={video_id}'
+    # pytube for thumbnail
     yt = YouTube(std_url)
     thumb_url = yt.thumbnail_url
-    filename = f'{video_id}.jpg'
-
-    resp = requests.get(thumb_url, stream=True)
-    if resp.status_code != 200:
-        abort(500, '썸네일 요청 실패')
+    r = requests.get(thumb_url, stream=True)
+    if r.status_code!=200:
+        abort(500,'썸네일 요청 실패')
 
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
-    for chunk in resp.iter_content(1024):
-        tmp.write(chunk)
+    for c in r.iter_content(1024): tmp.write(c)
     tmp.close()
 
-    response = send_file(
-        tmp.name,
-        as_attachment=True,
-        download_name=filename
-    )
-    try:
-        os.remove(tmp.name)
-    except:
-        pass
-    return response
+    resp = send_file(tmp.name, as_attachment=True, download_name=filename)
+    try: os.remove(tmp.name)
+    except: pass
+    return resp
 
-if __name__ == '__main__':
+if __name__=='__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
