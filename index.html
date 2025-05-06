@@ -1,73 +1,43 @@
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8" />
+  <meta charset="utf-8">
   <title>VidNail</title>
-  <style>
-    /* 스타일 생략 */
-  </style>
 </head>
 <body>
-  <div class="container">
-    <img src="logo.png" alt="VidNail Logo" class="logo" />
-    <h2>이제 동영상과 썸네일을 한 번에 다운 받으세요</h2>
-    <input id="urlInput" type="text" placeholder="유튜브 링크를 입력하세요" />
-    <select id="qualitySelect">
-      <option value="highest">원본</option>
-      <option value="720p">720p</option>
-      <option value="1080p">1080p</option>
-      <option value="1440p">2K</option>
-      <option value="2160p">4K</option>
-    </select>
-    <button id="downloadBtn">추출하기</button>
-    <div id="progressContainer"><div id="progressBar"></div></div>
-    <video id="videoPreview" controls style="display:none"></video>
-    <img id="thumbPreview" alt="썸네일" style="display:none" />
-  </div>
+  <h1>이제 동영상과 썸네일을 한 번에 다운로드!</h1>
+
+  <input id="url" type="text" placeholder="YouTube URL 입력" style="width:300px">
+  <button id="download-video">비디오 다운로드</button>
+  <button id="download-thumb">썸네일 다운로드</button>
+
   <script>
-    document.getElementById('downloadBtn').addEventListener('click', () => {
-      const url = document.getElementById('urlInput').value.trim();
-      const quality = document.getElementById('qualitySelect').value;
-      if (!url) { alert('링크를 입력해주세요'); return; }
-      const progressContainer = document.getElementById('progressContainer');
-      progressContainer.style.display = 'block';
+    // 백엔드 서버 주소
+    const SERVER = 'http://15.164.202.136:5000';
 
-      // 비디오 파일 요청
-      const params = new URLSearchParams({ url, quality });
-      fetch(`/download/video?url=${encodeURIComponent(url)}&quality=${quality}`)
-        .then(res => {
-          if (res.status === 200) return Promise.all([res.blob(), res.headers.get('X-Filename')]);
-          throw new Error('비디오 요청 실패: ' + res.status);
-        })
-        .then(([blob, filename]) => {
-          const urlBlob = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = urlBlob;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-        })
-        .catch(err => alert(err.message))
-        .finally(() => progressContainer.style.display = 'none');
+    // 버튼 가져오기
+    const btnVideo = document.getElementById('download-video');
+    const btnThumb = document.getElementById('download-thumb');
 
-      // 썸네일 요청
-      fetch(`/download/thumbnail?url=${encodeURIComponent(url)}`)
-        .then(res => {
-          if (res.status === 200) return Promise.all([res.blob(), res.headers.get('X-Filename')]);
-          throw new Error('썸네일 요청 실패: ' + res.status);
-        })
-        .then(([blob, filename]) => {
-          const urlBlob = URL.createObjectURL(blob);
-          const b = document.createElement('a');
-          b.href = urlBlob;
-          b.download = filename;
-          document.body.appendChild(b);
-          b.click();
-          document.body.removeChild(b);
-        })
-        .catch(err => console.error(err));
+    btnVideo.addEventListener('click', () => {
+      const raw = document.getElementById('url').value.trim();
+      if (!raw) return alert('URL을 입력해주세요.');
+      const encoded = encodeURIComponent(raw);
+      const href = `${SERVER}/download/video?url=${encoded}&quality=highest`;
+      // 파일 다운로드 트리거
+      const a = document.createElement('a');
+      a.href = href;
+      a.click();
+    });
+
+    btnThumb.addEventListener('click', () => {
+      const raw = document.getElementById('url').value.trim();
+      if (!raw) return alert('URL을 입력해주세요.');
+      const encoded = encodeURIComponent(raw);
+      const href = `${SERVER}/download/thumbnail?url=${encoded}`;
+      const a = document.createElement('a');
+      a.href = href;
+      a.click();
     });
   </script>
 </body>
