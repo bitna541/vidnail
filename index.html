@@ -53,7 +53,7 @@
         .finally(() => progressContainer.style.display = 'none');
 
       // 썸네일 요청
-      fetch(`/download/thumbnail?url=${encodeURIComponent(url)}`, { method: 'GET' })
+      fetch(`/download/thumbnail?url=${encodeURIComponent(url)}`)
         .then(res => {
           if (res.status === 200) return Promise.all([res.blob(), res.headers.get('X-Filename')]);
           throw new Error('썸네일 요청 실패: ' + res.status);
