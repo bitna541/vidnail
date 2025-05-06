@@ -1,8 +1,7 @@
 import os
 import re
-import sys
 import tempfile
-from flask import Flask, request, abort, send_file
+from flask import Flask, request, abort, send_file, send_from_directory
 from pytube import YouTube
 import requests
 import logging
@@ -12,6 +11,11 @@ logging.basicConfig(
     format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
     level=logging.INFO
 )
+
+# Serve index.html at root
+@app.route('/')
+def index():
+    return send_file('index.html')
 
 def normalize_video_id(raw_url: str) -> str:
     m = re.search(r'(?:v=|youtu\.be/)([A-Za-z0-9_-]{11})', raw_url or '')
@@ -30,19 +34,13 @@ def download_video():
     quality = request.args.get('quality', 'highest')
 
     yt = YouTube(std_url)
-
-    streams = yt.streams.filter(
-        progressive=True,
-        file_extension='mp4'
-    ).order_by('resolution').desc()
+    streams = yt.streams.filter(progressive=True, file_extension='mp4')                         .order_by('resolution').desc()
     if quality != 'highest':
-        height = int(quality.replace('p', ''))
         streams = streams.filter(res=quality)
     stream = streams.first()
     if not stream:
         abort(500, '요청하신 포맷의 스트림을 찾을 수 없습니다.')
 
-    # HEAD 요청은 다운로드 없이 200만 반환
     if request.method == 'HEAD':
         headers = {'Content-Disposition': f'attachment; filename="{video_id}.mp4"'}
         return '', 200, headers
@@ -52,7 +50,7 @@ def download_video():
     tmp.close()
 
     try:
-        app.logger.info(f'[download_video] 다운로드 시작: {std_url} -> {out_path}')
+        app.logger.info(f'[download_video] 다운로드 시작: {std_url}')
         yt.streams.get_by_itag(stream.itag).download(
             output_path=os.path.dirname(out_path),
             filename=os.path.basename(out_path)
@@ -61,12 +59,7 @@ def download_video():
         app.logger.error(f'[download_video] 실패: {e}', exc_info=True)
         abort(500, f'다운로드 실패: {e}')
 
-    app.logger.info(f'[download_video] 전송: {out_path}')
-    response = send_file(
-        out_path,
-        as_attachment=True,
-        download_name=f'{video_id}.mp4'
-    )
+    response = send_file(out_path, as_attachment=True, download_name=f'{video_id}.mp4')
     try:
         os.remove(out_path)
     except:
@@ -86,8 +79,7 @@ def download_thumbnail():
     filename = f'{video_id}.jpg'
 
     if request.method == 'HEAD':
-        headers = {'Content-Disposition': f'attachment; filename="{filename}"'}
-        return '', 200, headers
+        return '', 200, {'Content-Disposition': f'attachment; filename="{filename}"'}
 
     resp = requests.get(thumb_url, stream=True)
     if resp.status_code != 200:
@@ -98,11 +90,7 @@ def download_thumbnail():
         tmp.write(chunk)
     tmp.close()
 
-    response = send_file(
-        tmp.name,
-        as_attachment=True,
-        download_name=filename
-    )
+    response = send_file(tmp.name, as_attachment=True, download_name=filename)
     try:
         os.remove(tmp.name)
     except:
