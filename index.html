@@ -1,134 +1,74 @@
+
 <!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
   <title>VidNail</title>
   <style>
-    body {
-      margin: 0; padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-      background: #f9f9f9;
-      display: flex; justify-content: center; align-items: center; height: 100vh;
-    }
-    .container {
-      text-align: center; width: 100%; max-width: 600px; padding: 20px;
-      background: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.1); border-radius: 8px;
-    }
-    .logo-svg { width: 80px; height: 80px; margin-bottom: 10px; }
-    .service-name { margin: 0; font-size: 24px; font-weight: bold; color: #333; }
-    .service-korean { margin: 5px 0 10px; font-size: 14px; color: #666; }
-    .intro-text { margin: 0 0 20px; font-size: 16px; color: #333; }
-    .form-container { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
-    #urlInput, #qualitySelect {
-      padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;
-    }
-    #urlInput { flex: 1; }
-    #downloadBtn {
-      padding: 10px 20px; background: #e5ff00; border: none; border-radius: 4px;
-      cursor: pointer; font-weight: bold; font-size: 14px;
-    }
-    #downloadBtn:hover { background: #d6e600; }
-    .progress-container {
-      width: 100%; background: #e0e0e0; height: 10px; border-radius: 5px;
-      overflow: hidden; margin-bottom: 20px; display: none;
-    }
-    #progressBar { height: 100%; width: 0; background: #76c7c0; transition: width 0.2s ease; }
-    .preview-container { margin-top: 20px; display: none; }
-    #videoPreview { width: 100%; max-height: 300px; margin-bottom: 10px; background: #000; }
-    #thumbPreview { max-width: 100%; height: auto; border: 1px solid #ccc; }
+    /* 스타일 생략 */
   </style>
 </head>
 <body>
   <div class="container">
-    <svg class="logo-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="100" height="100" rx="20" fill="#e5ff00" />
-      <path d="M50 25 L50 60" stroke="#000" stroke-width="8" stroke-linecap="round" />
-      <path d="M40 55 L50 70 L60 55" fill="#000" />
-      <path d="M30 65 A20 20 0 0 0 70 65" stroke="#000" stroke-width="8" fill="none" stroke-linecap="round" />
-    </svg>
-    <h1 class="service-name">VidNail</h1>
-    <p class="service-korean">(비드넬)</p>
-    <p class="intro-text">이제 동영상과 썸네일을 한 번에 다운 받으세요</p>
-    <div class="form-container">
-      <input type="text" id="urlInput" placeholder="유튜브 링크를 입력하세요">
-      <select id="qualitySelect">
-        <option value="highest">원본</option>
-        <option value="2160p">4K (2160p)</option>
-        <option value="1440p">2K (1440p)</option>
-        <option value="1080p">1080p</option>
-        <option value="720p">720p</option>
-      </select>
-      <button id="downloadBtn">추출하기</button>
-    </div>
-    <div class="progress-container" id="progressContainer">
-      <div id="progressBar"></div>
-    </div>
-    <div class="preview-container" id="previewContainer">
-      <h3>다운로드 받을 파일</h3>
-      <video id="videoPreview" controls></video>
-      <img id="thumbPreview" alt="썸네일 미리보기">
-    </div>
+    <img src="logo.png" alt="VidNail Logo" class="logo" />
+    <h2>이제 동영상과 썸네일을 한 번에 다운 받으세요</h2>
+    <input id="urlInput" type="text" placeholder="유튜브 링크를 입력하세요" />
+    <select id="qualitySelect">
+      <option value="highest">원본</option>
+      <option value="720p">720p</option>
+      <option value="1080p">1080p</option>
+      <option value="1440p">2K</option>
+      <option value="2160p">4K</option>
+    </select>
+    <button id="downloadBtn">추출하기</button>
+    <div id="progressContainer"><div id="progressBar"></div></div>
+    <video id="videoPreview" controls style="display:none"></video>
+    <img id="thumbPreview" alt="썸네일" style="display:none" />
   </div>
   <script>
-    const downloadBtn = document.getElementById('downloadBtn');
-    const urlInput = document.getElementById('urlInput');
-    const qualitySelect = document.getElementById('qualitySelect');
-    const progressContainer = document.getElementById('progressContainer');
-    const progressBar = document.getElementById('progressBar');
-    const previewContainer = document.getElementById('previewContainer');
-    const videoPreview = document.getElementById('videoPreview');
-    const thumbPreview = document.getElementById('thumbPreview');
-
-    downloadBtn.addEventListener('click', () => {
-      const url = urlInput.value.trim();
-      const quality = qualitySelect.value;
-      if (!url) return alert('유튜브 링크를 입력하세요');
-
+    document.getElementById('downloadBtn').addEventListener('click', () => {
+      const url = document.getElementById('urlInput').value.trim();
+      const quality = document.getElementById('qualitySelect').value;
+      if (!url) { alert('링크를 입력해주세요'); return; }
+      const progressContainer = document.getElementById('progressContainer');
       progressContainer.style.display = 'block';
-      progressBar.style.width = '0%';
 
-      const xhr = new XMLHttpRequest();
-      xhr.open('GET', `/download/video?url=${encodeURIComponent(url)}&quality=${quality}`);
-      xhr.responseType = 'blob';
-
-      xhr.onprogress = (e) => {
-        if (e.lengthComputable) {
-          const percent = (e.loaded / e.total) * 100;
-          progressBar.style.width = percent + '%';
-        }
-      };
-
-      xhr.onload = () => {
-        if (xhr.status === 200) {
-          const blob = xhr.response;
-          const filename = xhr.getResponseHeader('X-Filename') || 'video.mp4';
+      // 비디오 파일 요청
+      const params = new URLSearchParams({ url, quality });
+      fetch(`/download/video?${params.toString()}`, { method: 'GET' })
+        .then(res => {
+          if (res.status === 200) return Promise.all([res.blob(), res.headers.get('X-Filename')]);
+          throw new Error('비디오 요청 실패: ' + res.status);
+        })
+        .then(([blob, filename]) => {
           const urlBlob = URL.createObjectURL(blob);
-          videoPreview.src = urlBlob;
-          previewContainer.style.display = 'block';
-          const a = document.createElement('a'); a.href = urlBlob; a.download = filename;
-          document.body.appendChild(a); a.click(); document.body.removeChild(a);
+          const a = document.createElement('a');
+          a.href = urlBlob;
+          a.download = filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+        })
+        .catch(err => alert(err.message))
+        .finally(() => progressContainer.style.display = 'none');
 
-          fetch(`/download/video?url=${encodeURIComponent(url)}&quality=${quality}`)
-            .then(res => Promise.all([res.blob(), res.headers.get('X-Filename')]))
-            .then(([imgBlob, imgName]) => {
-              const imgUrl = URL.createObjectURL(imgBlob);
-              thumbPreview.src = imgUrl;
-              const b = document.createElement('a'); b.href = imgUrl; b.download = imgName || 'thumbnail.jpg';
-              document.body.appendChild(b); b.click(); document.body.removeChild(b);
-            });
-        } else {
-          alert('다운로드 실패: ' + xhr.statusText);
-        }
-        progressContainer.style.display = 'none';
-      };
-
-      xhr.onerror = () => {
-        alert('다운로드 중 오류가 발생했습니다');
-        progressContainer.style.display = 'none';
-      };
-
-      xhr.send();
+      // 썸네일 요청
+      const thumbParams = new URLSearchParams({ url });
+      fetch(`/download/thumbnail?${thumbParams.toString()}`, { method: 'GET' })
+        .then(res => {
+          if (res.status === 200) return Promise.all([res.blob(), res.headers.get('X-Filename')]);
+          throw new Error('썸네일 요청 실패: ' + res.status);
+        })
+        .then(([blob, filename]) => {
+          const urlBlob = URL.createObjectURL(blob);
+          const b = document.createElement('a');
+          b.href = urlBlob;
+          b.download = filename;
+          document.body.appendChild(b);
+          b.click();
+          document.body.removeChild(b);
+        })
+        .catch(err => console.error(err));
     });
   </script>
 </body>
