@@ -1,7 +1,6 @@
 from flask import Flask, request, send_file, abort, make_response
-import subprocess
-import tempfile
-import os
+from pytube import YouTube
+import requests, tempfile, os
 
 app = Flask(__name__)
 
@@ -16,21 +15,38 @@ def download_video():
     if not url:
         abort(400, 'url 파라미터가 필요합니다')
 
-    # 파일 임시 경로 생성
-    with tempfile.TemporaryDirectory() as tmp:
-        out_path = os.path.join(tmp, 'video.mp4')
-        # yt-dlp로 다운로드 (youtube-dl 대신 yt-dlp 사용)
-        if quality == 'highest':
-            cmd = ['yt-dlp', '-f', 'bestvideo[ext=mp4]+bestaudio/best', '-o', out_path, url]
+    # HEAD 요청 분기: 스트림 탐색 없이 헤더만 반환
+    if request.method == 'HEAD':
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(url).query)
+        video_id = qs.get('v', [''])[0]
+        if not video_id:
+            abort(400, 'url 파라미터가 필요합니다')
+        filename = f"{video_id}.mp4"
+        return ('', 200, {
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Content-Length': '0'
+        })
+    # ── HEAD 분기 끝 ──
+
+    try:
+        yt = YouTube(url)
+        streams = yt.streams.filter(progressive=True, file_extension='mp4')
+        if quality != 'highest':
+            stream = streams.filter(res=quality).first() or streams.order_by('resolution').desc().first()
         else:
-            # 예: 720p이면 height<=720
-            height = quality.replace('p', '')
-            cmd = ['yt-dlp', '-f', f'bestvideo[height<={height}]+bestaudio/best', '-o', out_path, url]
-        try:
-            subprocess.run(cmd, capture_output=True, text=True, check=True)
-            return send_file(out_path, as_attachment=True)
-        except subprocess.CalledProcessError as e:
-            abort(500, f"다운로드 실패: {e.stderr}")
+            stream = streams.order_by('resolution').desc().first()
+        if not stream:
+            abort(404, '요청한 품질의 스트림을 찾을 수 없습니다')
+
+        with tempfile.TemporaryDirectory() as tmp:
+            video_path = stream.download(output_path=tmp, filename='video.mp4')
+            response = make_response(send_file(video_path, as_attachment=True))
+            safe_title = yt.title.replace('/', '_').replace('\\', '_')
+            response.headers['X-Filename'] = f"{safe_title}.mp4"
+            return response
+    except Exception as e:
+        abort(500, f"다운로드 실패: {e}")
 
 @app.route('/download/thumbnail', methods=['GET', 'HEAD'])
 def download_thumbnail():
@@ -38,22 +54,32 @@ def download_thumbnail():
     if not url:
         abort(400, 'url 파라미터가 필요합니다')
 
-    # yt-dlp로 썸네일 URL 추출
+    # HEAD 요청 분기: 헤더만 반환
+    if request.method == 'HEAD':
+        from urllib.parse import urlparse, parse_qs
+        qs = parse_qs(urlparse(url).query)
+        video_id = qs.get('v', [''])[0]
+        if not video_id:
+            abort(400, 'url 파라미터가 필요합니다')
+        filename = f"{video_id}.jpg"
+        return ('', 200, {
+            'Content-Disposition': f'attachment; filename="{filename}"',
+            'Content-Length': '0'
+        })
+    # ── HEAD 분기 끝 ──
+
     try:
-        # yt-dlp --get-thumbnail
-        result = subprocess.run(['yt-dlp', '--get-thumbnail', url],
-                                capture_output=True, text=True, check=True)
-        thumb_url = result.stdout.strip()
-        # 요청하여 파일로 저장
+        yt = YouTube(url)
+        thumb_url = yt.thumbnail_url
         resp = requests.get(thumb_url, timeout=10)
         if resp.status_code != 200:
             abort(404, '썸네일을 가져올 수 없습니다')
-        tmpf = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
-        tmpf.write(resp.content)
-        tmpf.flush()
-        filename = os.path.basename(thumb_url)
-        response = make_response(send_file(tmpf.name, as_attachment=True))
-        response.headers['X-Filename'] = filename
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmpf:
+            tmpf.write(resp.content)
+            tmpf.flush()
+            filename = f"{yt.title.replace('/', '_').replace('\\', '_')}.jpg"
+            response = make_response(send_file(tmpf.name, as_attachment=True))
+            response.headers['X-Filename'] = filename
         os.unlink(tmpf.name)
         return response
     except Exception as e:
