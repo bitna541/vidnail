@@ -89,4 +89,4 @@ def download_thumbnail():
         abort(500, f"썸네일 다운로드 실패: {e}")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
