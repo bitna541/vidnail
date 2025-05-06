@@ -35,7 +35,7 @@
 
       // 비디오 파일 요청
       const params = new URLSearchParams({ url, quality });
-      fetch(`/download/video?url=${encodeURIComponent(url)}`)
+      fetch(`/download/video?url=${encodeURIComponent(url)}&quality=${quality}`)
         .then(res => {
           if (res.status === 200) return Promise.all([res.blob(), res.headers.get('X-Filename')]);
           throw new Error('비디오 요청 실패: ' + res.status);
@@ -53,8 +53,7 @@
         .finally(() => progressContainer.style.display = 'none');
 
       // 썸네일 요청
-      const thumbParams = new URLSearchParams({ url });
-      fetch(`/download/thumbnail?${thumbParams.toString()}`, { method: 'GET' })
+      fetch(`/download/thumbnail?url=${encodeURIComponent(url)}`, { method: 'GET' })
         .then(res => {
           if (res.status === 200) return Promise.all([res.blob(), res.headers.get('X-Filename')]);
           throw new Error('썸네일 요청 실패: ' + res.status);
