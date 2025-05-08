@@ -1,44 +1,453 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ko">
 <head>
-  <meta charset="utf-8">
-  <title>VidNail</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vidnail - 유튜브 동영상과 썸네일 다운로더</title>
+    <style>
+        :root {
+            --primary-color: #ff4a4a;
+            --secondary-color: #3a86ff;
+            --dark-color: #333;
+            --light-color: #f8f9fa;
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        body {
+            background-color: var(--light-color);
+            color: var(--dark-color);
+            line-height: 1.6;
+        }
+        
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+        
+        header {
+            background-color: white;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            padding: 20px 0;
+            margin-bottom: 40px;
+        }
+        
+        .logo-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 10px;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+        }
+        
+        .logo svg {
+            width: 40px;
+            height: 40px;
+            margin-right: 10px;
+        }
+        
+        .logo-text {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+        
+        .tagline {
+            text-align: center;
+            font-size: 1.2rem;
+            color: var(--dark-color);
+            margin-bottom: 10px;
+        }
+        
+        .input-group {
+            background-color: white;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            margin-bottom: 30px;
+        }
+        
+        .form-control {
+            display: flex;
+            margin-bottom: 20px;
+        }
+        
+        .form-control input {
+            flex: 1;
+            padding: 12px 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px 0 0 5px;
+            font-size: 1rem;
+        }
+        
+        .form-control input:focus {
+            outline: none;
+            border-color: var(--secondary-color);
+        }
+        
+        .btn {
+            padding: 12px 25px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            border-radius: 0 5px 5px 0;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: bold;
+            transition: background-color 0.3s;
+        }
+        
+        .btn:hover {
+            background-color: #e63c3c;
+        }
+        
+        .btn-download {
+            background-color: var(--secondary-color);
+            border-radius: 5px;
+            margin-top: 20px;
+            width: 100%;
+        }
+        
+        .btn-download:hover {
+            background-color: #2f75e6;
+        }
+        
+        .thumbnail-preview {
+            display: none;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .thumbnail-preview img {
+            max-width: 100%;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .thumbnail-info {
+            margin-top: 15px;
+            padding: 15px;
+            background-color: white;
+            border-radius: 5px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .thumbnail-info h3 {
+            margin-bottom: 10px;
+            color: var(--primary-color);
+        }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal-content {
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            text-align: center;
+            max-width: 500px;
+            width: 90%;
+        }
+        
+        .modal-content h3 {
+            margin-bottom: 20px;
+            color: var(--primary-color);
+        }
+        
+        .modal-buttons {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .modal-btn {
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .btn-yes {
+            background-color: var(--secondary-color);
+            color: white;
+            border: none;
+        }
+        
+        .btn-no {
+            background-color: #f8f9fa;
+            color: var(--dark-color);
+            border: 1px solid #ddd;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            margin-top: 20px;
+        }
+        
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top-color: var(--secondary-color);
+            animation: spin 1s ease-in-out infinite;
+            margin: 0 auto;
+            margin-bottom: 15px;
+        }
+        
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
 </head>
 <body>
-  <h1>이제 동영상과 썸네일을 한 번에 다운로드!</h1>
-
-  <input id="url" type="text" placeholder="YouTube URL 입력" style="width:300px">
-  <button id="download-video">비디오 다운로드</button>
-  <button id="download-thumb">썸네일 다운로드</button>
-
-  <script>
-    // 백엔드 서버 주소
-    const SERVER = 'http://15.164.202.136:5000';
-
-    // 버튼 가져오기
-    const btnVideo = document.getElementById('download-video');
-    const btnThumb = document.getElementById('download-thumb');
-
-    btnVideo.addEventListener('click', () => {
-      const raw = document.getElementById('url').value.trim();
-      if (!raw) return alert('URL을 입력해주세요.');
-      const encoded = encodeURIComponent(raw);
-      const href = `${SERVER}/download/video?url=${encoded}&quality=highest`;
-      // 파일 다운로드 트리거
-      const a = document.createElement('a');
-      a.href = href;
-      a.click();
-    });
-
-    btnThumb.addEventListener('click', () => {
-      const raw = document.getElementById('url').value.trim();
-      if (!raw) return alert('URL을 입력해주세요.');
-      const encoded = encodeURIComponent(raw);
-      const href = `${SERVER}/download/thumbnail?url=${encoded}`;
-      const a = document.createElement('a');
-      a.href = href;
-      a.click();
-    });
-  </script>
+    <header>
+        <div class="container">
+            <div class="logo-container">
+                <div class="logo">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <path d="M14 12L10 9V15L14 12Z" fill="#FF4A4A"/>
+                        <path d="M17 3H7C4.79086 3 3 4.79086 3 7V17C3 19.2091 4.79086 21 7 21H17C19.2091 21 21 19.2091 21 17V7C21 4.79086 19.2091 3 17 3Z" stroke="#FF4A4A" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                        <rect x="6" y="6" width="12" height="8" rx="1" fill="#3A86FF" opacity="0.7"/>
+                    </svg>
+                    <span class="logo-text">Vidnail</span>
+                </div>
+            </div>
+            <p class="tagline">이제 영상과 썸네일을 한번에 다운 받으세요!</p>
+        </div>
+    </header>
+    
+    <div class="container">
+        <div class="input-group">
+            <div class="form-control">
+                <input type="text" id="youtube-url" placeholder="유튜브 URL을 입력하세요">
+                <button class="btn" id="fetch-btn">가져오기</button>
+            </div>
+            
+            <div class="thumbnail-preview" id="thumbnail-preview">
+                <img id="thumbnail-image" src="" alt="썸네일 이미지">
+                <div class="thumbnail-info">
+                    <h3 id="video-title">동영상 제목</h3>
+                    <p id="video-info">정보 로딩 중...</p>
+                </div>
+                <button class="btn btn-download" id="download-btn">동영상 & 썸네일 다운로드</button>
+            </div>
+            
+            <div class="loading" id="loading">
+                <div class="loading-spinner"></div>
+                <p>처리 중입니다. 잠시만 기다려주세요...</p>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal" id="playlist-modal">
+        <div class="modal-content">
+            <h3>재생목록 다운로드</h3>
+            <p>이 재생목록에 있는 동영상과 썸네일을 모두 다운 받으시겠습니까?</p>
+            <div class="modal-buttons">
+                <button class="modal-btn btn-yes" id="playlist-yes">예</button>
+                <button class="modal-btn btn-no" id="playlist-no">아니오</button>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const youtubeUrl = document.getElementById('youtube-url');
+            const fetchBtn = document.getElementById('fetch-btn');
+            const thumbnailPreview = document.getElementById('thumbnail-preview');
+            const thumbnailImage = document.getElementById('thumbnail-image');
+            const videoTitle = document.getElementById('video-title');
+            const videoInfo = document.getElementById('video-info');
+            const downloadBtn = document.getElementById('download-btn');
+            const playlistModal = document.getElementById('playlist-modal');
+            const playlistYes = document.getElementById('playlist-yes');
+            const playlistNo = document.getElementById('playlist-no');
+            const loading = document.getElementById('loading');
+            
+            let isPlaylist = false;
+            let currentVideoData = null;
+            
+            fetchBtn.addEventListener('click', async function() {
+                // URL 가져오기
+                const url = youtubeUrl.value.trim();
+                if (!url) {
+                    alert('유튜브 URL을 입력해주세요.');
+                    return;
+                }
+                
+                // URL 유효성 검사
+                if (!url.includes('youtube.com') && !url.includes('youtu.be')) {
+                    alert('유효한 유튜브 URL을 입력해주세요.');
+                    return;
+                }
+                
+                loading.style.display = 'block';
+                thumbnailPreview.style.display = 'none';
+                
+                try {
+                    // API 호출하여 비디오 정보 가져오기
+                    const response = await fetch('/api/info', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ url })
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('서버 오류가 발생했습니다.');
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        alert(data.error);
+                        return;
+                    }
+                    
+                    // 재생목록 감지
+                    isPlaylist = data.is_playlist;
+                    
+                    if (isPlaylist) {
+                        // 재생목록 정보 저장
+                        currentVideoData = data;
+                        
+                        // 첫 번째 비디오 썸네일 표시
+                        thumbnailImage.src = data.first_video_thumbnail;
+                        videoTitle.textContent = data.playlist_title || '재생목록';
+                        videoInfo.textContent = `${data.video_count}개의 동영상이 포함된 재생목록`;
+                    } else {
+                        // 단일 비디오 정보 저장
+                        currentVideoData = data;
+                        
+                        // 썸네일 표시
+                        thumbnailImage.src = data.thumbnail_url;
+                        videoTitle.textContent = data.title;
+                        videoInfo.textContent = `길이: ${data.duration} | 업로더: ${data.uploader}`;
+                    }
+                    
+                    loading.style.display = 'none';
+                    thumbnailPreview.style.display = 'block';
+                    
+                } catch (error) {
+                    alert('오류가 발생했습니다: ' + error.message);
+                    loading.style.display = 'none';
+                }
+            });
+            
+            downloadBtn.addEventListener('click', function() {
+                if (!currentVideoData) {
+                    alert('먼저 유튜브 URL을 입력하고 가져오기 버튼을 클릭해주세요.');
+                    return;
+                }
+                
+                if (isPlaylist) {
+                    // 재생목록인 경우 모달 표시
+                    playlistModal.style.display = 'flex';
+                } else {
+                    // 단일 비디오 다운로드
+                    downloadVideo(false);
+                }
+            });
+            
+            playlistYes.addEventListener('click', function() {
+                playlistModal.style.display = 'none';
+                downloadVideo(true);
+            });
+            
+            playlistNo.addEventListener('click', function() {
+                playlistModal.style.display = 'none';
+                downloadVideo(false);
+            });
+            
+            async function downloadVideo(isFullPlaylist) {
+                loading.style.display = 'block';
+                
+                try {
+                    const downloadData = {
+                        url: youtubeUrl.value.trim(),
+                        is_playlist: isPlaylist,
+                        download_all: isFullPlaylist
+                    };
+                    
+                    const response = await fetch('/api/download', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(downloadData)
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('다운로드 중 오류가 발생했습니다.');
+                    }
+                    
+                    const data = await response.json();
+                    
+                    if (data.error) {
+                        alert(data.error);
+                        loading.style.display = 'none';
+                        return;
+                    }
+                    
+                    // 다운로드 링크 생성 및 클릭
+                    if (isPlaylist && isFullPlaylist) {
+                        // 재생목록 전체 다운로드 (압축 파일)
+                        window.location.href = data.download_url;
+                    } else {
+                        // 단일 비디오 다운로드
+                        // 동영상 다운로드
+                        const videoLink = document.createElement('a');
+                        videoLink.href = data.video_url;
+                        videoLink.download = data.video_filename;
+                        document.body.appendChild(videoLink);
+                        videoLink.click();
+                        document.body.removeChild(videoLink);
+                        
+                        // 썸네일 다운로드
+                        setTimeout(() => {
+                            const thumbnailLink = document.createElement('a');
+                            thumbnailLink.href = data.thumbnail_url;
+                            thumbnailLink.download = data.thumbnail_filename;
+                            document.body.appendChild(thumbnailLink);
+                            thumbnailLink.click();
+                            document.body.removeChild(thumbnailLink);
+                        }, 1000); // 1초 뒤에 썸네일 다운로드 (브라우저가 연속적인 다운로드를 처리할 시간을 주기 위함)
+                    }
+                    
+                    loading.style.display = 'none';
+                    
+                } catch (error) {
+                    alert('다운로드 중 오류가 발생했습니다: ' + error.message);
+                    loading.style.display = 'none';
+                }
+            }
+        });
+    </script>
 </body>
 </html>
